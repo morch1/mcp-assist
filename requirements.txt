@@ -1,0 +1,11 @@
+colorlog==6.10.1
+homeassistant==2026.3.2
+pip>=21.3.1
+ruff==0.15.7
+hassil==3.5.0
+home-assistant-frontend==20260429.3
+pymicro-vad==1.0.1
+numpy==2.3.2
+home-assistant-intents==2026.5.5
+mutagen==1.47.0
+pyspeex-noise==1.0.2
