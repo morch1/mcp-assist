@@ -409,36 +409,36 @@ Current time: {{ time }}
 Current date: {{ date }}"""
 
 DEVICE_TECHNICAL_INSTRUCTIONS = """
-Device tools are enabled.
+## Device tools
 - Use discover_devices / get_device_details when the user means a physical device or you need related entities on the same device.
 - Prefer discover_entities for most direct control.
 """
 
 MEMORY_TECHNICAL_INSTRUCTIONS = """
-Memory tools are enabled.
+## Memory tools
 - Use remember_memory only when the user explicitly asks you to remember something.
 - Use recall_memories for stored facts or preferences.
 - Use forget_memory when the user asks to remove or update stored memory.
 """
 
 ASSIST_BRIDGE_TECHNICAL_INSTRUCTIONS = """
-Assist bridge tools are enabled.
+## Assist bridge tools
 - Use list_assist_tools / call_assist_tool only as fallback or debugging.
 - Prefer MCP Assist discovery and control tools first.
 """
 
 CALCULATOR_TECHNICAL_INSTRUCTIONS = """
-Calculator tools are enabled.
+## Calculator tools
 - Use calculator tools for exact arithmetic and compound expressions instead of mental math.
 """
 
 UNIT_CONVERSION_TECHNICAL_INSTRUCTIONS = """
-Unit conversion tools are enabled.
+## Unit conversion tools
 - Use convert_unit for temperatures, measurements, data sizes, rates, and other exact unit conversions.
 """
 
 MUSIC_ASSISTANT_TECHNICAL_INSTRUCTIONS = """
-Music Assistant support is enabled.
+## Music Assistant tools
 - Prefer Music Assistant tools for playback, target discovery, search, library, and queue questions.
 - Only target Music Assistant players, not arbitrary media_player entities.
 - If no target is given and the current area is known, use area="{{ current_area }}".

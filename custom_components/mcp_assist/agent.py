@@ -1733,52 +1733,30 @@ class MCPAssistConversationEntity(ConversationEntity):
             "date": now.strftime("%Y-%m-%d"),
         }
 
-        current_area = "Unknown"
-        needs_current_area = (
-            "current_area" in combined or self.music_assistant_support_enabled
-        )
-        if needs_current_area and user_input is not None:
-            current_area = await self._get_current_area(user_input)
+        current_area = await self._get_current_area(user_input) if user_input is not None else "Unknown"
         variables["current_area"] = current_area
 
-        if (
-            "current_user" in combined
-            or "current_user_context" in combined
-        ) and user_input is not None:
-            current_user = await self._get_current_user_name(user_input)
-        else:
-            current_user = ""
+        current_user = await self._get_current_user_name(user_input) if user_input is not None else ""
+
         variables["current_user"] = current_user
-        variables["current_user_context"] = (
-            f"Current user: {current_user}" if current_user else ""
-        )
+        variables["current_user_context"] = f"Current user: {current_user}" if current_user else ""
 
-        if "home_location" in combined or "home_location_context" in combined:
-            home_location = self._get_home_location()
-        else:
-            home_location = ""
+        home_location = self._get_home_location()
+
         variables["home_location"] = home_location
-        variables["home_location_context"] = (
-            f"Home location: {home_location}" if home_location else ""
+        variables["home_location_context"] = f"Home location: {home_location}" if home_location else ""
+
+        variables["response_mode"] = RESPONSE_MODE_INSTRUCTIONS.get(
+            self.follow_up_mode, RESPONSE_MODE_INSTRUCTIONS["default"]
         )
 
-        if "response_mode" in combined:
-            variables["response_mode"] = RESPONSE_MODE_INSTRUCTIONS.get(
-                self.follow_up_mode, RESPONSE_MODE_INSTRUCTIONS["default"]
-            )
-        else:
-            variables["response_mode"] = ""
-
-        if "index" in combined:
-            index_manager = self.hass.data.get(DOMAIN, {}).get("index_manager")
-            if index_manager:
-                index = await index_manager.get_index()
-                variables["index"] = json.dumps(index, separators=(",", ":"))
-            else:
-                variables["index"] = "{}"
-                _LOGGER.warning("IndexManager not available, using empty index")
+        index_manager = self.hass.data.get(DOMAIN, {}).get("index_manager")
+        if index_manager:
+            index = await index_manager.get_index()
+            variables["index"] = json.dumps(index, separators=(",", ":"))
         else:
             variables["index"] = "{}"
+            _LOGGER.warning("IndexManager not available, using empty index")
 
         return variables, current_area
 
