@@ -14,6 +14,7 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult, section
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import llm
 from homeassistant.helpers.selector import (
     BooleanSelector,
     SelectSelector,
@@ -151,6 +152,8 @@ from .const import (
     DEFAULT_END_WORDS,
     DEFAULT_CLEAN_RESPONSES,
     DEFAULT_TIMEOUT,
+    CONF_LLM_APIS,
+    DEFAULT_LLM_APIS,
     TOOL_FAMILY_ASSIST_BRIDGE,
     TOOL_FAMILY_DEVICE,
     TOOL_FAMILY_EXTERNAL_CUSTOM,
@@ -564,9 +567,18 @@ def _build_profile_tools_section(
     )
 
 
+def _build_llm_api_options(hass: HomeAssistant) -> list[dict[str, str]]:
+    """Return SelectSelector options for all registered LLM APIs."""
+    return [
+        {"value": api.id, "label": api.name}
+        for api in llm.async_get_apis(hass)
+    ]
+
+
 def _build_shared_tools_section(
     defaults: dict[str, Any],
     built_in_specs: tuple[BuiltInToolToggleSpec, ...],
+    llm_api_options: list[dict[str, str]] | None = None,
 ) -> section:
     """Build the shared MCP server optional tools section."""
     shared_tool_entries: list[tuple[str, vol.Optional, type[bool]]] = []
@@ -607,6 +619,21 @@ def _build_shared_tools_section(
         )
     }
 
+    llm_apis_field: dict = {}
+    if llm_api_options:
+        llm_apis_field = {
+            vol.Optional(
+                CONF_LLM_APIS,
+                default=_get_form_value(defaults, CONF_LLM_APIS, DEFAULT_LLM_APIS),
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=llm_api_options,
+                    multiple=True,
+                    mode=SelectSelectorMode.LIST,
+                )
+            ),
+        }
+
     return section(
         vol.Schema(
             {
@@ -634,6 +661,7 @@ def _build_shared_tools_section(
                         defaults, CONF_BRAVE_API_KEY, DEFAULT_BRAVE_API_KEY
                     ),
                 ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
+                **llm_apis_field,
             }
         ),
         {"collapsed": False},
@@ -1702,6 +1730,7 @@ class MCPAssistConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         current_values = user_input or {}
         built_in_specs = await _async_load_builtin_tool_toggle_specs(self.hass)
+        llm_api_options = _build_llm_api_options(self.hass)
 
         if user_input is not None:
             user_input = _flatten_section_values(
@@ -1889,6 +1918,11 @@ class MCPAssistConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_MEMORY_MAX_ITEMS,
                 DEFAULT_MEMORY_MAX_ITEMS,
             ),
+            CONF_LLM_APIS: _get_form_value(
+                current_values,
+                CONF_LLM_APIS,
+                DEFAULT_LLM_APIS,
+            ),
         }
         for spec in built_in_specs:
             shared_defaults[spec.shared_setting_key] = _get_form_value(
@@ -1921,6 +1955,7 @@ class MCPAssistConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 TOOLS_SECTION_KEY: _build_shared_tools_section(
                     shared_defaults,
                     built_in_specs,
+                    llm_api_options,
                 ),
             }
         )
@@ -2622,6 +2657,7 @@ class MCPAssistOptionsFlow(config_entries.OptionsFlow):
         errors: dict[str, str] = {}
         current_values = user_input or {}
         built_in_specs = await _async_load_builtin_tool_toggle_specs(self.hass)
+        llm_api_options = _build_llm_api_options(self.hass)
 
         if user_input is not None:
             user_input = _flatten_section_values(
@@ -2910,6 +2946,14 @@ class MCPAssistOptionsFlow(config_entries.OptionsFlow):
                     ),
                 ),
             ),
+            CONF_LLM_APIS: _get_form_value(
+                current_values,
+                CONF_LLM_APIS,
+                sys_options.get(
+                    CONF_LLM_APIS,
+                    sys_data.get(CONF_LLM_APIS, DEFAULT_LLM_APIS),
+                ),
+            ),
         }
         for spec in built_in_specs:
             shared_defaults[spec.shared_setting_key] = _get_form_value(
@@ -2954,6 +2998,7 @@ class MCPAssistOptionsFlow(config_entries.OptionsFlow):
                 TOOLS_SECTION_KEY: _build_shared_tools_section(
                     shared_defaults,
                     built_in_specs,
+                    llm_api_options,
                 ),
             }
         )

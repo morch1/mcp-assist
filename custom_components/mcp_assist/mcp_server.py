@@ -85,6 +85,8 @@ from .const import (
     DEFAULT_MEMORY_DEFAULT_TTL_DAYS,
     DEFAULT_MEMORY_MAX_TTL_DAYS,
     DEFAULT_MEMORY_MAX_ITEMS,
+    CONF_LLM_APIS,
+    DEFAULT_LLM_APIS,
     SERVER_TYPE_OLLAMA,
     TOOL_FAMILY_SHARED_SETTINGS,
     get_optional_tool_family,
@@ -3358,28 +3360,33 @@ class MCPServer(
         """List the native Home Assistant Assist tool surface."""
         del args
 
-        llm_api = await self._get_assist_api_instance()
-        tools_payload = [
-            {
-                "name": tool.name,
-                "description": tool.description or "",
-                "input_schema": self._format_assist_tool_input_schema(
-                    tool, llm_api.custom_serializer
-                ),
-            }
-            for tool in llm_api.tools
-        ]
-        payload = {
-            "api_id": llm_api.api.id,
-            "api_name": llm_api.api.name,
-            "tool_count": len(tools_payload),
-            "has_live_context_tool": self._assist_api_has_live_context_tool(llm_api),
-            "tools": tools_payload,
-        }
-        header = (
-            f"Found {len(tools_payload)} native Home Assistant Assist tools "
-            f"from the {llm_api.api.name} API."
-        )
+        all_instances = await self._get_configured_api_instances()
+        apis_payload = []
+        total_tools = 0
+        for llm_api in all_instances:
+            tools_payload = [
+                {
+                    "name": tool.name,
+                    "description": tool.description or "",
+                    "input_schema": self._format_assist_tool_input_schema(
+                        tool, llm_api.custom_serializer
+                    ),
+                }
+                for tool in llm_api.tools
+            ]
+            total_tools += len(tools_payload)
+            apis_payload.append(
+                {
+                    "api_id": llm_api.api.id,
+                    "api_name": llm_api.api.name,
+                    "tool_count": len(tools_payload),
+                    "has_live_context_tool": self._assist_api_has_live_context_tool(llm_api),
+                    "tools": tools_payload,
+                }
+            )
+        payload = {"total_tool_count": total_tools, "apis": apis_payload}
+        api_names = ", ".join(a["api_name"] for a in apis_payload)
+        header = f"Found {total_tools} native Home Assistant tools across {len(apis_payload)} API(s): {api_names}."
         return {
             "content": [
                 {
@@ -3399,7 +3406,13 @@ class MCPServer(
         if not isinstance(assist_arguments, dict):
             raise ValueError("arguments must be an object")
 
-        llm_api = await self._get_assist_api_instance()
+        all_instances = await self._get_configured_api_instances()
+        llm_api = next(
+            (inst for inst in all_instances if any(t.name == tool_name for t in inst.tools)),
+            all_instances[0] if all_instances else None,
+        )
+        if llm_api is None:
+            raise HomeAssistantError(f"No LLM API available to call tool '{tool_name}'")
         tool_response = await self._call_assist_api_tool(
             llm_api, tool_name, assist_arguments
         )
@@ -3420,9 +3433,11 @@ class MCPServer(
         """Get the native Home Assistant Assist prompt text."""
         del args
 
-        llm_api = await self._get_assist_api_instance()
-        description = f"Default prompt for Home Assistant {llm_api.api.name} API"
-        text = f"{description}\n\n{llm_api.api_prompt}"
+        all_instances = await self._get_configured_api_instances()
+        parts = []
+        for llm_api in all_instances:
+            parts.append(f"## {llm_api.api.name}\n\n{llm_api.api_prompt}")
+        text = "\n\n---\n\n".join(parts)
         return {"content": [{"type": "text", "text": text}]}
 
     async def tool_get_assist_context_snapshot(
@@ -3431,7 +3446,23 @@ class MCPServer(
         """Get the native Home Assistant Assist live context snapshot."""
         del args
 
-        llm_api = await self._get_assist_api_instance()
+        all_instances = await self._get_configured_api_instances()
+        llm_api = next(
+            (inst for inst in all_instances if inst.api.id == llm.LLM_API_ASSIST),
+            None,
+        )
+        if llm_api is None:
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "The native Assist API is not enabled in the current LLM API "
+                            "configuration, so no Assist context snapshot is available."
+                        ),
+                    }
+                ]
+            }
         if not self._assist_api_has_live_context_tool(llm_api):
             return {
                 "content": [
@@ -4204,6 +4235,20 @@ class MCPServer(
         return await llm.async_get_api(
             self.hass, llm.LLM_API_ASSIST, self._create_assist_llm_context()
         )
+
+    async def _get_configured_api_instances(self) -> list[llm.APIInstance]:
+        """Return LLM API instances for all API IDs selected in shared settings."""
+        api_ids: list[str] = self._get_shared_setting(CONF_LLM_APIS, DEFAULT_LLM_APIS)
+        if not api_ids:
+            return []
+        context = self._create_assist_llm_context()
+        instances = []
+        for api_id in api_ids:
+            try:
+                instances.append(await llm.async_get_api(self.hass, api_id, context))
+            except Exception as err:
+                _LOGGER.warning("Could not load LLM API '%s': %s", api_id, err)
+        return instances
 
     def _assist_api_has_live_context_tool(self, llm_api: llm.APIInstance) -> bool:
         """Return whether the Assist API exposes GetLiveContext."""

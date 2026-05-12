@@ -74,6 +74,7 @@ CONF_FOLLOW_UP_PHRASES = "follow_up_phrases"
 CONF_END_WORDS = "end_words"
 CONF_CLEAN_RESPONSES = "clean_responses"
 CONF_TIMEOUT = "timeout"
+CONF_LLM_APIS = "llm_apis"
 
 # Default values
 DEFAULT_SERVER_TYPE = "lmstudio"
@@ -164,6 +165,7 @@ DEFAULT_END_WORDS = (
 )
 DEFAULT_CLEAN_RESPONSES = False
 DEFAULT_TIMEOUT = 30
+DEFAULT_LLM_APIS: list[str] = ["assist"]
 
 CUSTOM_TOOLS_DIRECTORY = "mcp-assist-tools"
 CUSTOM_TOOL_SHARED_DIRECTORY = "__shared__"
