@@ -138,6 +138,7 @@ class MCPServer(
         self.progress_queues = set()  # Track progress SSE clients
         self._cached_tools_list: dict[str, Any] | None = None
         self._cached_tools_signature: tuple[Any, ...] | None = None
+        self._cached_native_tool_map: dict[str, tuple[str, str]] = {}  # prefixed_name -> (api_id, original_name)
         self.memory_manager = MemoryManager(hass)
 
         # Extract allowed IPs from LM Studio URL
@@ -509,6 +510,7 @@ class MCPServer(
             self._device_tools_enabled(),
             self._music_assistant_support_enabled(),
             self._external_custom_tools_enabled(),
+            tuple(sorted(self._get_shared_setting(CONF_LLM_APIS, DEFAULT_LLM_APIS))),
             tuple(
                 (
                     spec.package_id,
@@ -802,6 +804,7 @@ class MCPServer(
             }
         self._cached_tools_list = None
         self._cached_tools_signature = None
+        self._cached_native_tool_map = {}  # type: ignore[assignment]
         await self.broadcast_notification("notifications/tools/list_changed")
         return diagnostics
 
@@ -1563,40 +1566,6 @@ class MCPServer(
                 },
             },
             {
-                "name": "list_assist_tools",
-                "description": "List the native Home Assistant Assist tools exposed by the built-in Assist LLM API. Use this to inspect the core Assist tool surface or when deciding whether a native Assist tool is a better fit than the custom MCP Assist tools.",
-                "llmDescription": "List native Home Assistant Assist tools.",
-                "inputSchema": {
-                    "$schema": "http://json-schema.org/draft-07/schema#",
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
-                    "additionalProperties": False,
-                },
-            },
-            {
-                "name": "call_assist_tool",
-                "description": "Call a native Home Assistant Assist tool directly, using the built-in Assist LLM API rather than the custom MCP Assist tool surface. Use this as a fallback or compatibility path when the native Assist tool behavior is a better fit.",
-                "llmDescription": "Call a native Home Assistant Assist tool directly.",
-                "inputSchema": {
-                    "$schema": "http://json-schema.org/draft-07/schema#",
-                    "type": "object",
-                    "properties": {
-                        "tool_name": {
-                            "type": "string",
-                            "description": "The exact native Assist tool name to call, for example 'HassTurnOn' or 'GetLiveContext'. Use list_assist_tools first if you are unsure.",
-                        },
-                        "arguments": {
-                            "type": "object",
-                            "description": "Arguments to pass to the native Assist tool. This should match the schema returned by list_assist_tools for that tool.",
-                            "additionalProperties": True,
-                        },
-                    },
-                    "required": ["tool_name"],
-                    "additionalProperties": False,
-                },
-            },
-            {
                 "name": "get_assist_prompt",
                 "description": "Get the native Home Assistant Assist prompt text from the built-in Assist LLM API. Use this sparingly for compatibility, debugging, or understanding the core Assist instructions.",
                 "llmDescription": "Get the native Home Assistant Assist prompt text.",
@@ -1851,8 +1820,14 @@ class MCPServer(
             except Exception as e:
                 _LOGGER.error(f"Failed to get custom tool definitions: {e}")
 
+        native_tool_map: dict[str, tuple[str, str]] = {}
+        if self._assist_bridge_enabled():
+            native_defs, native_tool_map = await self._get_native_api_tool_definitions()
+            tools.extend(native_defs)
+
         tools = [tool for tool in tools if self._is_tool_enabled(tool["name"])]
         self._cached_tools_list = list(tools)
+        self._cached_native_tool_map = native_tool_map
         self._cached_tools_signature = signature
 
         # nextCursor is optional - omit if not paginating
@@ -1885,10 +1860,6 @@ class MCPServer(
             return await self.tool_list_domains()
         elif tool_name == "get_index":
             return await self.tool_get_index()
-        elif tool_name == "list_assist_tools":
-            return await self.tool_list_assist_tools(arguments)
-        elif tool_name == "call_assist_tool":
-            return await self.tool_call_assist_tool(arguments)
         elif tool_name == "get_assist_prompt":
             return await self.tool_get_assist_prompt(arguments)
         elif tool_name == "get_assist_context_snapshot":
@@ -1913,6 +1884,13 @@ class MCPServer(
             return await self.tool_get_image(arguments)
         elif tool_name == "generate_image":
             return await self.tool_generate_image(arguments, context=context)
+        elif tool_name in self._cached_native_tool_map:
+            api_id, original_name = self._cached_native_tool_map[tool_name]
+            context_obj = self._create_assist_llm_context()
+            llm_api = await llm.async_get_api(self.hass, api_id, context_obj)
+            tool_response = await self._call_assist_api_tool(llm_api, original_name, arguments)
+            serialized = self._serialize_service_response_value(tool_response)
+            return {"content": [{"type": "text", "text": json.dumps(serialized, indent=2, ensure_ascii=False)}]}
         else:
             # Check if it's a custom tool
             if self.custom_tools and self.custom_tools.is_custom_tool(tool_name):
@@ -3356,79 +3334,6 @@ class MCPServer(
         # Format as JSON for structured consumption
         return {"content": [{"type": "text", "text": json.dumps(index, indent=2)}]}
 
-    async def tool_list_assist_tools(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """List the native Home Assistant Assist tool surface."""
-        del args
-
-        all_instances = await self._get_configured_api_instances()
-        apis_payload = []
-        total_tools = 0
-        for llm_api in all_instances:
-            tools_payload = [
-                {
-                    "name": tool.name,
-                    "description": tool.description or "",
-                    "input_schema": self._format_assist_tool_input_schema(
-                        tool, llm_api.custom_serializer
-                    ),
-                }
-                for tool in llm_api.tools
-            ]
-            total_tools += len(tools_payload)
-            apis_payload.append(
-                {
-                    "api_id": llm_api.api.id,
-                    "api_name": llm_api.api.name,
-                    "tool_count": len(tools_payload),
-                    "has_live_context_tool": self._assist_api_has_live_context_tool(llm_api),
-                    "tools": tools_payload,
-                }
-            )
-        payload = {"total_tool_count": total_tools, "apis": apis_payload}
-        api_names = ", ".join(a["api_name"] for a in apis_payload)
-        header = f"Found {total_tools} native Home Assistant tools across {len(apis_payload)} API(s): {api_names}."
-        return {
-            "content": [
-                {
-                    "type": "text",
-                    "text": header + "\n\n" + json.dumps(payload, indent=2, ensure_ascii=False),
-                }
-            ]
-        }
-
-    async def tool_call_assist_tool(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Call a native Home Assistant Assist tool directly."""
-        tool_name = str(args.get("tool_name") or "").strip()
-        if not tool_name:
-            raise ValueError("tool_name is required")
-
-        assist_arguments = args.get("arguments") or {}
-        if not isinstance(assist_arguments, dict):
-            raise ValueError("arguments must be an object")
-
-        all_instances = await self._get_configured_api_instances()
-        llm_api = next(
-            (inst for inst in all_instances if any(t.name == tool_name for t in inst.tools)),
-            all_instances[0] if all_instances else None,
-        )
-        if llm_api is None:
-            raise HomeAssistantError(f"No LLM API available to call tool '{tool_name}'")
-        tool_response = await self._call_assist_api_tool(
-            llm_api, tool_name, assist_arguments
-        )
-        serialized_response = self._serialize_service_response_value(tool_response)
-
-        text_parts = [f"✅ Called native Assist tool `{tool_name}`."]
-        summary_lines = self._build_assist_tool_response_summary(serialized_response)
-        if summary_lines:
-            text_parts.append("")
-            text_parts.extend(summary_lines)
-        text_parts.append("")
-        text_parts.append("Response:")
-        text_parts.append(json.dumps(serialized_response, indent=2, ensure_ascii=False))
-
-        return {"content": [{"type": "text", "text": "\n".join(text_parts)}]}
-
     async def tool_get_assist_prompt(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Get the native Home Assistant Assist prompt text."""
         del args
@@ -4230,12 +4135,6 @@ class MCPServer(
             device_id=None,
         )
 
-    async def _get_assist_api_instance(self) -> llm.APIInstance:
-        """Get the built-in Home Assistant Assist API instance."""
-        return await llm.async_get_api(
-            self.hass, llm.LLM_API_ASSIST, self._create_assist_llm_context()
-        )
-
     async def _get_configured_api_instances(self) -> list[llm.APIInstance]:
         """Return LLM API instances for all API IDs selected in shared settings."""
         api_ids: list[str] = self._get_shared_setting(CONF_LLM_APIS, DEFAULT_LLM_APIS)
@@ -4249,6 +4148,36 @@ class MCPServer(
             except Exception as err:
                 _LOGGER.warning("Could not load LLM API '%s': %s", api_id, err)
         return instances
+
+    async def _get_native_api_tool_definitions(
+        self,
+    ) -> tuple[list[dict[str, Any]], dict[str, tuple[str, str]]]:
+        """Build MCP tool definitions for all tools from the configured LLM APIs.
+
+        Tool names follow the ``api_id.tool_name`` convention (e.g. ``assist.HassTurnOn``),
+        which creates a natural namespace per API and prevents all cross-API collisions.
+        Returns (tool_definitions, namespaced_name_to_(api_id, original_name)).
+        """
+        instances = await self._get_configured_api_instances()
+        definitions: list[dict[str, Any]] = []
+        tool_map: dict[str, tuple[str, str]] = {}
+
+        for llm_api in instances:
+            for tool in llm_api.tools:
+                namespaced_name = f"{llm_api.api.id}.{tool.name}"
+                input_schema = self._format_assist_tool_input_schema(
+                    tool, llm_api.custom_serializer
+                )
+                definitions.append(
+                    {
+                        "name": namespaced_name,
+                        "description": tool.description or tool.name,
+                        "inputSchema": input_schema,
+                    }
+                )
+                tool_map[namespaced_name] = (llm_api.api.id, tool.name)
+
+        return definitions, tool_map
 
     def _assist_api_has_live_context_tool(self, llm_api: llm.APIInstance) -> bool:
         """Return whether the Assist API exposes GetLiveContext."""

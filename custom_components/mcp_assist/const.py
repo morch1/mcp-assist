@@ -190,8 +190,6 @@ OPTIONAL_TOOL_FAMILY_TOOL_NAMES = {
     TOOL_FAMILY_DEVICE: frozenset({"discover_devices", "get_device_details"}),
     TOOL_FAMILY_ASSIST_BRIDGE: frozenset(
         {
-            "list_assist_tools",
-            "call_assist_tool",
             "get_assist_prompt",
             "get_assist_context_snapshot",
         }
@@ -427,9 +425,11 @@ MEMORY_TECHNICAL_INSTRUCTIONS = """
 """
 
 ASSIST_BRIDGE_TECHNICAL_INSTRUCTIONS = """
-## Assist bridge tools
-- Use list_assist_tools / call_assist_tool only as fallback or debugging.
-- Prefer MCP Assist discovery and control tools first.
+## Native Assist tools (<api_id>.<tool_name> format)
+- Tools named in `api_id.tool_name` format (e.g. `assist.HassTurnOn`) are native Home Assistant LLM tools exposed by the configured Assist APIs.
+- The part before the dot is the API identifier; the part after is the tool's original name.
+- Use them only when the built-in MCP tools (discover_entities, perform_action, etc.) cannot fulfill the request.
+- Prefer the built-in MCP tools for all entity control, discovery, and state queries.
 """
 
 CALCULATOR_TECHNICAL_INSTRUCTIONS = """

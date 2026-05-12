@@ -258,6 +258,7 @@
               "enable_unit_conversion_tools": "Unit Conversion",
               "enable_weather_forecast_tool": "Weather Forecast",
               "enable_web_search": "Web Search",
+              "llm_apis": "Assist Bridge Exposed APIs",
               "search_provider": "Web Search Provider",
               "brave_api_key": "Brave Search API Key"
             },
@@ -550,6 +551,7 @@
               "enable_unit_conversion_tools": "Unit Conversion",
               "enable_weather_forecast_tool": "Weather Forecast",
               "enable_web_search": "Web Search",
+              "llm_apis": "Assist Bridge Exposed APIs",
               "search_provider": "Web Search Provider",
               "brave_api_key": "Brave Search API Key"
             },
