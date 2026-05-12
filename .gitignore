@@ -145,3 +145,6 @@ ha_domains_complete_reference.md
 DOMAIN_REGISTRY.md
 
 /config
+/custom_components/*
+!/custom_components/mcp_assist
+!/custom_components/mcp_assist/*
