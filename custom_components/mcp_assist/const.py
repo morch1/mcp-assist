@@ -402,11 +402,14 @@ Responses:
 
 {{ response_mode }}
 
-{{ current_user_context }}
-Current area: {{ current_area }}
-{{ home_location_context }}
-Current time: {{ time }}
-Current date: {{ date }}"""
+Current context:
+- User: {{ context_user }}
+- Device: {{ context_device }}
+- Area: {{ context_area }}
+- Location: {{ context_location }}
+- Time: {{ context_time }}
+- Date: {{ context_date }}
+"""
 
 DEVICE_TECHNICAL_INSTRUCTIONS = """
 ## Device tools

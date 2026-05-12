@@ -1723,32 +1723,19 @@ class MCPAssistConversationEntity(ConversationEntity):
 
     async def _build_prompt_template_variables(
         self, user_input: ConversationInput | None, *templates: str
-    ) -> tuple[dict[str, Any], str]:
+    ) -> dict[str, Any]:
         """Collect template variables, fetching expensive values only when referenced."""
         now = dt_util.now()
-        combined = "\n".join(t for t in templates if t)
 
         variables: dict[str, Any] = {
-            "time": now.strftime("%H:%M:%S"),
-            "date": now.strftime("%Y-%m-%d"),
+            "context_time": now.strftime("%H:%M:%S"),
+            "context_date": now.strftime("%Y-%m-%d"),
+            "context_area": await self._get_current_area(user_input) if user_input is not None else "unknown",
+            "context_device": getattr(user_input, "device_id", "unknown") if user_input is not None else "unknown",
+            "context_user": await self._get_current_user_name(user_input) if user_input is not None else "unknown",
+            "context_location": self._get_home_location(),
+            "response_mode": RESPONSE_MODE_INSTRUCTIONS.get(self.follow_up_mode, RESPONSE_MODE_INSTRUCTIONS["default"]),
         }
-
-        current_area = await self._get_current_area(user_input) if user_input is not None else "Unknown"
-        variables["current_area"] = current_area
-
-        current_user = await self._get_current_user_name(user_input) if user_input is not None else ""
-
-        variables["current_user"] = current_user
-        variables["current_user_context"] = f"Current user: {current_user}" if current_user else ""
-
-        home_location = self._get_home_location()
-
-        variables["home_location"] = home_location
-        variables["home_location_context"] = f"Home location: {home_location}" if home_location else ""
-
-        variables["response_mode"] = RESPONSE_MODE_INSTRUCTIONS.get(
-            self.follow_up_mode, RESPONSE_MODE_INSTRUCTIONS["default"]
-        )
 
         index_manager = self.hass.data.get(DOMAIN, {}).get("index_manager")
         if index_manager:
@@ -1758,7 +1745,7 @@ class MCPAssistConversationEntity(ConversationEntity):
             variables["index"] = "{}"
             _LOGGER.warning("IndexManager not available, using empty index")
 
-        return variables, current_area
+        return variables
 
     async def _build_system_prompt_with_context(
         self, user_input: ConversationInput
@@ -1779,26 +1766,14 @@ class MCPAssistConversationEntity(ConversationEntity):
                 default_prompt=DEFAULT_TECHNICAL_PROMPT,
             )
 
-            variables, current_area = await self._build_prompt_template_variables(
-                user_input, system_prompt_template, technical_prompt_template
-            )
-
-            system_prompt = self._render_prompt_template(
-                system_prompt_template, variables
-            )
-            technical_prompt = self._render_prompt_template(
-                technical_prompt_template, variables
-            )
-
+            variables = await self._build_prompt_template_variables(user_input, system_prompt_template, technical_prompt_template)
+            system_prompt = self._render_prompt_template(system_prompt_template, variables)
+            technical_prompt = self._render_prompt_template(technical_prompt_template, variables)
             technical_prompt = re.sub(r"\n{3,}", "\n\n", technical_prompt).strip()
+            optional_instructions = self._build_optional_technical_instructions(variables["context_area"])
 
-            optional_instructions = self._build_optional_technical_instructions(
-                current_area
-            )
             if optional_instructions:
-                technical_prompt = (
-                    f"{technical_prompt.rstrip()}\n\n{optional_instructions}"
-                )
+                technical_prompt = (f"{technical_prompt.rstrip()}\n\n{optional_instructions}")
 
             if system_prompt:
                 return f"{system_prompt}\n\n{technical_prompt}"
