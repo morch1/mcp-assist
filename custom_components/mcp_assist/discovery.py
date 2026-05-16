@@ -1786,6 +1786,18 @@ class SmartDiscovery:
                     entity_details["forecast_service_supported"] = True
                     entity_details["forecast_types"] = forecast_types
 
+            if state_obj.domain == "script":
+                script_component = self.hass.data.get("script")
+                if script_component:
+                    script_entity = script_component.get_entity(entity_id)
+                    if script_entity and hasattr(script_entity, 'fields') and script_entity.fields:
+                        fields = {}
+                        for field_name, field_data in script_entity.fields.items():
+                            desc = field_data.get('description', '') if isinstance(field_data, dict) else ''
+                            fields[field_name] = {"description": desc} if desc else {}
+                        if fields:
+                            entity_details["fields"] = fields
+
             if entity_entry:
                 entity_details.update({
                     "unique_id": entity_entry.unique_id,
