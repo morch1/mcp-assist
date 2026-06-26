@@ -2890,8 +2890,10 @@ class MCPAssistConversationEntity(ConversationEntity):
                 await self._trigger_tts(sentence_buffer.strip())
                 sentence_buffer = ""
 
+            current_tool_calls = [tc for tc in current_tool_calls if tc]
+
             # If we got tool calls, execute them
-            if has_tool_calls and current_tool_calls:
+            if has_tool_calls and len(current_tool_calls) > 0:
                 _LOGGER.info(
                     f"⚡ Executing {len(current_tool_calls)} streamed tool calls"
                 )
