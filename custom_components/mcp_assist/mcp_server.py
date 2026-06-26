@@ -4188,8 +4188,9 @@ class MCPServer(
     ) -> tuple[list[dict[str, Any]], dict[str, tuple[str, str]]]:
         """Build MCP tool definitions for all tools from the configured LLM APIs.
 
-        Tool names follow the ``api_id.tool_name`` convention (e.g. ``assist.HassTurnOn``),
-        which creates a natural namespace per API and prevents all cross-API collisions.
+        Tool names follow the ``native-<api_id>-<tool_name>`` convention
+        (e.g. ``native-assist-HassTurnOn``), which creates a natural namespace per
+        API and prevents all cross-API collisions.
         Returns (tool_definitions, namespaced_name_to_(api_id, original_name)).
         """
         instances = await self._get_configured_api_instances()
@@ -4198,7 +4199,7 @@ class MCPServer(
 
         for llm_api in instances:
             for tool in llm_api.tools:
-                namespaced_name = f"{llm_api.api.id}.{tool.name}"
+                namespaced_name = f"native-{llm_api.api.id}-{tool.name}"
                 input_schema = self._format_assist_tool_input_schema(
                     tool, llm_api.custom_serializer
                 )

@@ -425,9 +425,9 @@ MEMORY_TECHNICAL_INSTRUCTIONS = """
 """
 
 ASSIST_BRIDGE_TECHNICAL_INSTRUCTIONS = """
-## Native Assist tools (<api_id>.<tool_name> format)
-- Tools named in `api_id.tool_name` format (e.g. `assist.HassTurnOn`) are native Home Assistant LLM tools exposed by the configured Assist APIs.
-- The part before the dot is the API identifier; the part after is the tool's original name.
+## Native Assist tools (native-<api_id>-<tool_name> format)
+- Tools named in `native-<api_id>-<tool_name>` format (e.g. `native-assist-HassTurnOn`) are native Home Assistant LLM tools exposed by the configured Assist APIs.
+- After the `native-` prefix, the next segment is the API identifier and the remainder is the tool's original name.
 - Use them only when the built-in MCP tools (discover_entities, perform_action, etc.) cannot fulfill the request.
 - Prefer the built-in MCP tools for all entity control, discovery, and state queries.
 """
