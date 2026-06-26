@@ -2750,8 +2750,10 @@ class MCPAssistConversationEntity(ConversationEntity):
                                 # Handle streamed tool calls
                                 if "tool_calls" in delta:
                                     has_tool_calls = True
+                                    idx_offset = min(set(tc.get("index", 0) for tc in delta["tool_calls"]))
+
                                     for tc in delta["tool_calls"]:
-                                        idx = tc.get("index", 0)
+                                        idx = tc.get("index", 0) - idx_offset
 
                                         # Initialize tool call if new
                                         if idx >= len(current_tool_calls):
